@@ -1,0 +1,67 @@
+name: Build LNReader Debug APK
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+env:
+  VERSION_NAME: "2.0.0"
+  ABI_FILTER: "arm64-v8a"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2  # Helps with version detection
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v3
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'gradle'  # Caches dependencies
+
+      - name: Grant gradlew permissions
+        run: |
+          cd android/
+          chmod +x gradlew
+          ./gradlew --version  # Verify Gradle works
+
+      - name: Build Debug APK (with error logging)
+        run: |
+          cd android/
+          ./gradlew assembleArm64Debug \
+            -PversionName=$VERSION_NAME \
+            -PabiFilters=$ABI_FILTER \
+            --stacktrace --info  # Enhanced logging
+        continue-on-error: false
+
+      - name: Verify APK exists
+        run: |
+          ls -la android/app/build/outputs/apk/arm64/debug/
+          if [ ! -f "android/app/build/outputs/apk/arm64/debug/app-arm64-debug.apk" ]; then
+            echo "::error::APK not found!"
+            exit 1
+          fi
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v3
+        with:
+          name: LNReader-Debug-APK
+          path: android/app/build/outputs/apk/arm64/debug/app-arm64-debug.apk
+
+      - name: Create Release
+        if: success()
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: "v$VERSION_NAME"
+          name: "LNReader $VERSION_NAME Debug"
+          body: "| Architecture | Build Type |\n|--------------|------------|\n| arm64-v8a | Debug |"
+          files: android/app/build/outputs/apk/arm64/debug/app-arm64-debug.apk
+          draft: false
